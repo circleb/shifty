@@ -31,16 +31,14 @@ Email is skipped locally unless you create a `.dev.vars` file containing `RESEND
 
 ## Deploy
 
-```bash
-npx wrangler login
-npx wrangler d1 create shift-sheet     # paste the printed database_id into wrangler.toml
-npm run db:remote                      # creates the tables in the real database
-```
+Workers Builds runs `npx wrangler deploy`. The Worker name in `wrangler.toml` is `shifty`, matching the connected Cloudflare project.
 
-Then edit `wrangler.toml`:
+That deploy creates the D1 database named `shifty`. `database_id` is left unset on purpose: the all-zero placeholder makes the deploy fail because no such database exists. Later deploys reuse the database by name. The Worker creates the tables on the first request.
+
+Then edit `wrangler.toml` and deploy again:
 
 - `APP_NAME`: shown in the page header.
-- `BASE_URL`: the public origin, for example `https://shifts.example.com`. Reminder emails use it for cancel links. Leave empty until you have a domain.
+- `BASE_URL`: the public origin, for example `https://shifty.<account>.workers.dev`. Reminder emails use it for cancel links. Leave empty until you have a domain.
 - `MAIL_FROM`: a sender on a domain you verified in Resend.
 
 Email (optional but needed for confirmations and reminders):
@@ -49,9 +47,7 @@ Email (optional but needed for confirmations and reminders):
 npx wrangler secret put RESEND_API_KEY
 ```
 
-```bash
-npm run deploy
-```
+To deploy from your own machine: `npx wrangler login`, then `npm run deploy`.
 
 Add a custom domain in the Cloudflare dashboard (Workers & Pages, your worker, Settings, Domains & Routes), put it in `BASE_URL`, and deploy again.
 

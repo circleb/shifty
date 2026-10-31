@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 execute shift-sheet --local --file=schema.sql",
-    "db:remote": "wrangler d1 execute shift-sheet --remote --file=schema.sql",
+    "db:local": "wrangler d1 execute shifty --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute shifty --remote --file=schema.sql",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import { HttpError, json, htmlResponse, randomId, readJson, str, nowSec } from "
 import { parseRanges, parseTz, generateSlots } from "./slots";
 import { sendEmail, confirmationEmail, reminderEmail } from "./mail";
 import { createPage, volunteerPage, adminPage, cancelPage } from "./pages";
+import { ensureSchema } from "./schema";
 
 export interface Env {
   DB: D1Database;
@@ -24,6 +25,7 @@ interface SheetRow {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
+      await ensureSchema(env.DB);
       return await route(req, env, ctx);
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message }, e.status);
@@ -33,7 +35,7 @@ export default {
   },
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(sendReminders(env));
+    ctx.waitUntil(ensureSchema(env.DB).then(() => sendReminders(env)));
   },
 } satisfies ExportedHandler<Env>;
 
