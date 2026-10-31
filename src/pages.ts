@@ -117,6 +117,14 @@ function linkRow(url) {
   return el('div', { class: 'linkrow' }, [el('code', { text: url }), btn]);
 }
 function remindText(m) { return m === 120 ? 'reminder 2 hours before' : m === 1440 ? 'reminder 1 day before' : 'no reminder'; }
+function forgetShift(sheetId, token) {
+  var key = 'ss:' + sheetId, mine = {};
+  try { mine = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { return; }
+  if (!mine || typeof mine !== 'object') return;
+  var changed = false;
+  Object.keys(mine).forEach(function (id) { if (mine[id] === token) { delete mine[id]; changed = true; } });
+  if (changed) { try { localStorage.setItem(key, JSON.stringify(mine)); } catch (e) {} }
+}
 `;
 
 function shell(appName: string, title: string, body: string, js: string): string {
@@ -314,8 +322,33 @@ var pid = location.pathname.split('/')[2];
 var data = null, active = null;
 var mineKey = 'ss:' + pid;
 var mine = {};
-try { mine = JSON.parse(localStorage.getItem(mineKey) || '{}'); } catch (e) {}
+function loadMine() {
+  mine = {};
+  try {
+    var raw = JSON.parse(localStorage.getItem(mineKey) || '{}');
+    if (raw && typeof raw === 'object') mine = raw;
+  } catch (e) {}
+}
 function saveMine() { try { localStorage.setItem(mineKey, JSON.stringify(mine)); } catch (e) {} }
+function reconcileMine() {
+  var changed = false;
+  Object.keys(mine).forEach(function (id) {
+    var slot = null;
+    data.slots.forEach(function (s) { if (s.id === id) slot = s; });
+    // A saved sign-up whose slot is open again was cancelled, or an admin cleared it.
+    if (!slot || !slot.takenBy) { delete mine[id]; changed = true; }
+  });
+  if (changed) saveMine();
+}
+function syncBanner() {
+  var b = $('#banner');
+  if (!b || b.hidden) return;
+  var link = b.querySelector('a');
+  if (!link) return;
+  var token = (link.getAttribute('href') || '').split('/').pop();
+  var still = Object.keys(mine).some(function (id) { return mine[id] === token; });
+  if (!still) { b.hidden = true; b.textContent = ''; }
+}
 
 function render() {
   if (!data) return;
@@ -347,8 +380,14 @@ function render() {
 }
 
 function refresh() {
-  return api('/api/s/' + pid).then(function (d) { data = d; $('#err').textContent = ''; render(); })
-    .catch(function (e) { $('#title').textContent = 'Sheet not found'; $('#err').textContent = e.message; });
+  return api('/api/s/' + pid).then(function (d) {
+    data = d;
+    loadMine();
+    reconcileMine();
+    $('#err').textContent = '';
+    render();
+    syncBanner();
+  }).catch(function (e) { $('#title').textContent = 'Sheet not found'; $('#err').textContent = e.message; });
 }
 
 var dlg = $('#dlg');
@@ -398,6 +437,8 @@ $('#claimForm').addEventListener('submit', function (e) {
 });
 
 document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+window.addEventListener('pageshow', function (e) { if (e.persisted) refresh(); });
+loadMine();
 refresh();
 `;
 
@@ -509,6 +550,7 @@ api('/api/c/' + token).then(function (d) {
 $('#cancel').addEventListener('click', function () {
   var b = $('#cancel'); b.disabled = true;
   post('/api/c/' + token + '/cancel').then(function () {
+    if (info && info.sheetId) forgetShift(info.sheetId, token);
     $('#actions').hidden = true;
     $('#when').textContent = '';
     var r = $('#result'); r.hidden = false;
