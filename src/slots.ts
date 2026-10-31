@@ -3,10 +3,9 @@ import { isValidTimeZone, zonedToUtc } from "./time";
 
 export interface RangeInput {
   startDate: string; // YYYY-MM-DD, in the sheet's timezone
-  endDate: string; // inclusive
-  days: number[]; // 0 = Sunday ... 6 = Saturday
-  startTime: string; // HH:MM daily window start
-  endTime: string; // HH:MM daily window end; at or before startTime means "next day" (overnight)
+  startTime: string; // HH:MM, when the first slot starts
+  endDate: string; // YYYY-MM-DD, in the sheet's timezone
+  endTime: string; // HH:MM, when the range finishes
   shiftMinutes: number;
 }
 
@@ -19,7 +18,7 @@ const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 function parseDate(s: string): [number, number, number] {
   const m = DATE_RE.exec(s);
-  if (!m) throw new HttpError(400, "Pick a start and end date for every range.");
+  if (!m) throw new HttpError(400, "Pick a start and finish date for every range.");
   const [y, mo, d] = [+m[1], +m[2], +m[3]];
   const check = new Date(Date.UTC(y, mo - 1, d));
   if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d) {
@@ -30,7 +29,7 @@ function parseDate(s: string): [number, number, number] {
 
 function parseTime(s: string): [number, number] {
   const m = TIME_RE.exec(s);
-  if (!m) throw new HttpError(400, "Set a from and to time for every range.");
+  if (!m) throw new HttpError(400, "Set a start and finish time for every range.");
   return [+m[1], +m[2]];
 }
 
@@ -50,29 +49,17 @@ export function parseRanges(raw: unknown): RangeInput[] {
     const startTime = String(o.startTime ?? "");
     const endTime = String(o.endTime ?? "");
     const shiftMinutes = Number(o.shiftMinutes);
-    const days = Array.isArray(o.days) ? [...new Set(o.days.map(Number))].filter((n) => Number.isInteger(n) && n >= 0 && n <= 6) : [];
 
-    const [sy, sm, sd] = parseDate(startDate);
-    const [ey, em, ed] = parseDate(endDate);
-    const span = (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86_400_000;
-    if (span < 0) throw new HttpError(400, "A range ends before it starts.");
-    if (span > MAX_DAYS_PER_RANGE - 1) throw new HttpError(400, `Keep each range to ${MAX_DAYS_PER_RANGE} days or fewer.`);
-    if (days.length === 0) throw new HttpError(400, "Pick at least one day of the week for every range.");
-
-    const [sh, smin] = parseTime(startTime);
-    const [eh, emin] = parseTime(endTime);
+    parseDate(startDate);
+    parseDate(endDate);
+    parseTime(startTime);
+    parseTime(endTime);
     if (!Number.isInteger(shiftMinutes) || shiftMinutes < 15 || shiftMinutes > 1440 || shiftMinutes % 15 !== 0) {
-      throw new HttpError(400, "Shift length must be a multiple of 15 minutes.");
+      throw new HttpError(400, "Slot length must be a multiple of 15 minutes.");
     }
-    const windowMin = windowMinutes(sh * 60 + smin, eh * 60 + emin);
-    if (shiftMinutes > windowMin) throw new HttpError(400, "A shift is longer than the time window it has to fit in.");
 
-    return { startDate, endDate, days: days.sort((a, b) => a - b), startTime, endTime, shiftMinutes };
+    return { startDate, endDate, startTime, endTime, shiftMinutes };
   });
-}
-
-function windowMinutes(startMin: number, endMin: number): number {
-  return endMin > startMin ? endMin - startMin : endMin + 1440 - startMin;
 }
 
 export interface GeneratedSlot {
@@ -89,32 +76,22 @@ export function generateSlots(ranges: RangeInput[], tz: string): GeneratedSlot[]
     const [ey, em, ed] = parseDate(r.endDate);
     const [sh, smin] = parseTime(r.startTime);
     const [eh, emin] = parseTime(r.endTime);
-    const overnight = eh * 60 + emin <= sh * 60 + smin;
+    const start = zonedToUtc(sy, sm, sd, sh, smin, tz);
+    const end = zonedToUtc(ey, em, ed, eh, emin, tz);
+    if (end <= start) throw new HttpError(400, "A range has to finish after it starts.");
+    if (end - start > MAX_DAYS_PER_RANGE * 86_400_000) {
+      throw new HttpError(400, `Keep each range to ${MAX_DAYS_PER_RANGE} days or fewer.`);
+    }
+
     const stepMs = r.shiftMinutes * 60_000;
+    if (stepMs > end - start) throw new HttpError(400, "A slot is longer than the range it has to fit in.");
 
-    for (let t = Date.UTC(sy, sm - 1, sd); t <= Date.UTC(ey, em - 1, ed); t += 86_400_000) {
-      const day = new Date(t);
-      if (!r.days.includes(day.getUTCDay())) continue;
-      const y = day.getUTCFullYear();
-      const m = day.getUTCMonth() + 1;
-      const d = day.getUTCDate();
-
-      const winStart = zonedToUtc(y, m, d, sh, smin, tz);
-      let winEnd: number;
-      if (overnight) {
-        const next = new Date(Date.UTC(y, m - 1, d + 1));
-        winEnd = zonedToUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), eh, emin, tz);
-      } else {
-        winEnd = zonedToUtc(y, m, d, eh, emin, tz);
-      }
-
-      for (let s = winStart; s + stepMs <= winEnd; s += stepMs) {
-        const key = `${s}-${s + stepMs}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({ start: s / 1000, end: (s + stepMs) / 1000 });
-        if (out.length > MAX_SLOTS) throw new HttpError(400, `That makes more than ${MAX_SLOTS} slots. Shorten the ranges or use longer shifts.`);
-      }
+    for (let s = start; s + stepMs <= end; s += stepMs) {
+      const key = `${s}-${s + stepMs}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ start: s / 1000, end: (s + stepMs) / 1000 });
+      if (out.length > MAX_SLOTS) throw new HttpError(400, `That makes more than ${MAX_SLOTS} slots. Shorten the ranges or use longer slots.`);
     }
   }
   return out.sort((a, b) => a.start - b.start);

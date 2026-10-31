@@ -155,7 +155,7 @@ ${js}</script>
 const CREATE_BODY = String.raw`
 <main id="setup">
   <h1>Set up a shift sheet</h1>
-  <p class="lead">Add the time ranges you need covered and pick a shift length. You get one link to share. People choose their own slots. No accounts.</p>
+  <p class="lead">Each range starts at a date and time and finishes at a date and time. Slots fill that span. You get one link to share. People choose their own slots. No accounts.</p>
   <form id="f" novalidate>
     <label for="title">Name<input id="title" maxlength="80" placeholder="Grandma and Grandpa shifts" autocomplete="off"></label>
     <label for="note">Note for volunteers (optional)<textarea id="note" maxlength="500" rows="2" placeholder="Anything people should know before they sign up"></textarea></label>
@@ -181,7 +181,6 @@ const CREATE_BODY = String.raw`
 `;
 
 const CREATE_JS = String.raw`
-var DAY_ORDER = [1, 2, 3, 4, 5, 6, 0], DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 var SHIFTS = [[30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [360, '6 hours'], [480, '8 hours'], [720, '12 hours']];
 function ymd(d) { var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
 
@@ -194,42 +193,31 @@ $('#tz').value = local;
 
 var cards = [];
 function rangeCard() {
-  var today = new Date(), end = new Date();
-  end.setDate(end.getDate() + 13);
-  var sd = el('input', { type: 'date', value: ymd(today), id: 'sd' + cards.length });
-  var ed = el('input', { type: 'date', value: ymd(end), id: 'ed' + cards.length });
-  var st = el('input', { type: 'time', value: '08:00', id: 'st' + cards.length });
-  var et = el('input', { type: 'time', value: '20:00', id: 'et' + cards.length });
+  var today = ymd(new Date());
+  var sd = el('input', { type: 'date', value: today, id: 'sd' + cards.length });
+  var st = el('input', { type: 'time', value: '09:00', id: 'st' + cards.length });
+  var ed = el('input', { type: 'date', value: today, id: 'ed' + cards.length });
+  var et = el('input', { type: 'time', value: '17:00', id: 'et' + cards.length });
   var sh = el('select', { id: 'sh' + cards.length });
   SHIFTS.forEach(function (s) { sh.appendChild(el('option', { value: String(s[0]), text: s[1] })); });
   sh.value = '120';
-  var daysWrap = el('div', { class: 'days', role: 'group', 'aria-label': 'Days of the week' });
-  var boxes = [];
-  DAY_ORDER.forEach(function (d) {
-    var cb = el('input', { type: 'checkbox', value: String(d) });
-    cb.checked = d >= 1 && d <= 5;
-    boxes.push(cb);
-    daysWrap.appendChild(el('label', { class: 'day' }, [cb, el('span', { text: DAY_NAMES[d] })]));
-  });
   var rm = el('button', { type: 'button', class: 'btn small', text: 'Remove' });
   var card = el('div', { class: 'range' }, [
     el('div', { class: 'rangehead' }, [el('strong', { text: 'Range' }), rm]),
     el('div', { class: 'grid2' }, [
-      el('label', { for: sd.id }, ['First day', sd]),
-      el('label', { for: ed.id }, ['Last day', ed])
+      el('label', { for: sd.id }, ['Start date', sd]),
+      el('label', { for: st.id }, ['Start time', st])
     ]),
-    daysWrap,
     el('div', { class: 'grid2' }, [
-      el('label', { for: st.id }, ['From', st]),
-      el('label', { for: et.id }, ['To (earlier than From means overnight)', et])
+      el('label', { for: ed.id }, ['Finish date', ed]),
+      el('label', { for: et.id }, ['Finish time', et])
     ]),
-    el('label', { for: sh.id }, ['Shift length', sh])
+    el('label', { for: sh.id }, ['Slot length', sh])
   ]);
   card.get = function () {
     return {
-      startDate: sd.value, endDate: ed.value, startTime: st.value, endTime: et.value,
-      shiftMinutes: Number(sh.value),
-      days: boxes.filter(function (b) { return b.checked; }).map(function (b) { return Number(b.value); })
+      startDate: sd.value, startTime: st.value, endDate: ed.value, endTime: et.value,
+      shiftMinutes: Number(sh.value)
     };
   };
   rm.addEventListener('click', function () {

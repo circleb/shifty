@@ -1,6 +1,6 @@
 # Shift Sheet
 
-A very small volunteer shift sign-up. An admin defines one or more ranges and a shift length, shares one link, and people pick their own slots. No accounts for anyone. The working name is a placeholder: change `APP_NAME` in `wrangler.toml`.
+A very small volunteer shift sign-up. An admin defines one or more ranges, shares one link, and people pick their own slots. No accounts for anyone. The working name is a placeholder: change `APP_NAME` in `wrangler.toml`.
 
 Stack: one Cloudflare Worker (TypeScript, no framework), D1 (SQLite) for storage, Resend for email, a cron trigger for reminders.
 
@@ -8,7 +8,7 @@ Stack: one Cloudflare Worker (TypeScript, no framework), D1 (SQLite) for storage
 
 **Admin** (`/`)
 1. Name the sheet, set the timezone, add an optional note.
-2. Add ranges: first day, last day, days of the week, daily from/to time, shift length. A "to" time at or before "from" means overnight.
+2. Add ranges. Each one has a start date and time, a finish date and time, and a slot length. Slots run back to back across that whole span, including overnight. Time left over at the end, shorter than one slot, is not a slot.
 3. A live preview shows how many slots the ranges make. Create the sheet.
 4. You get a public share link (`/s/<id>`) and a private admin link (`/a/<token>`).
 
@@ -54,7 +54,7 @@ Add a custom domain in the Cloudflare dashboard (Workers & Pages, your worker, S
 ## Design notes
 
 - **No double-booking.** `claims.slot_id` is `UNIQUE`. Two people tapping the same slot at once: one insert wins, the other gets a 409 and a "someone just took that shift" message.
-- **Times** are stored as UTC seconds. Slots are generated from the sheet's timezone, including daylight saving changes and overnight windows. Every viewer sees times in the sheet's timezone, and the page says which one.
+- **Times** are stored as UTC seconds. Each range is a start instant and a finish instant in the sheet's timezone, including daylight saving changes. Slots tile that span. Every viewer sees times in the sheet's timezone, and the page says which one.
 - **Limits:** 10 ranges per sheet, 62 days per range, 1,500 slots per sheet.
 - **Privacy.** Volunteers see first names on taken slots, never emails. Only the admin link shows emails. Page data is inserted with `textContent`, so a name can't inject HTML.
 - **Admin link is the only credential.** Anyone who has it can manage the sheet. There is no recovery if it is lost.
