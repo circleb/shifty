@@ -1,4 +1,4 @@
-name = "shift-sheet"
+name = "shifty"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
@@ -12,9 +12,14 @@ MAIL_FROM = "Shift Sheet <shifts@example.com>"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "shift-sheet"
-# Run `npx wrangler d1 create shift-sheet` and paste the id it prints.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_name = "shifty"
+# Leave database_id unset. `wrangler deploy` creates this database on the
+# connected account and reuses it by name on later deploys.
+
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
 
 [triggers]
 # Reminder sweep every 15 minutes.
