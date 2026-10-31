@@ -1,0 +1,21 @@
+name = "shift-sheet"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Shown in the page header. Change this once you pick a name.
+APP_NAME = "Shift Sheet"
+# Public origin of the deployed app. Used for cancel links inside reminder emails.
+BASE_URL = ""
+# Must be a sender verified in Resend. Email is skipped entirely if RESEND_API_KEY is not set.
+MAIL_FROM = "Shift Sheet <shifts@example.com>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shift-sheet"
+# Run `npx wrangler d1 create shift-sheet` and paste the id it prints.
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[triggers]
+# Reminder sweep every 15 minutes.
+crons = ["*/15 * * * *"]
