@@ -14,7 +14,7 @@ Stack: one Cloudflare Worker (TypeScript, no framework), D1 (SQLite) for storage
 
 **Volunteer** (`/s/<id>`)
 1. See upcoming slots grouped by day. Taken slots show the first name used.
-2. Tap Take it, enter a name, optionally an email and a reminder (2 hours or 1 day before).
+2. The first Take it asks for a name, and optionally an email and a reminder (2 hours or 1 day before). A later slot that starts exactly when a shift they still hold ends is taken with one click, using only that first name. If they skip a slot, Take it opens the form again, filled in from the first sign-up, and they can change any of it. Later edits do not replace what the first sign-up saved.
 3. Cancel from the banner, from the sheet on the same device, or from the link in the confirmation email (`/c/<token>`).
 
 **Admin view** (`/a/<token>`): see every slot with name, email and reminder choice, clear a sign-up, copy the share link, delete the sheet.

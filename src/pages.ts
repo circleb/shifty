@@ -358,7 +358,7 @@ function render() {
       } else if (s.takenBy) {
         li.appendChild(el('span', { class: 'who', text: 'Taken by ' + s.takenBy }));
       } else {
-        li.appendChild(el('button', { type: 'button', class: 'btn small primary', text: 'Take it', onclick: function () { openForm(s); } }));
+        li.appendChild(el('button', { type: 'button', class: 'btn small primary', text: 'Take it', onclick: function () { take(s); } }));
       }
       ul.appendChild(li);
     });
@@ -379,12 +379,38 @@ function refresh() {
 }
 
 var dlg = $('#dlg');
+var claiming = false;
+var firstKey = 'ss:first:' + pid;
+function loadFirst() {
+  try {
+    var raw = JSON.parse(localStorage.getItem(firstKey) || 'null');
+    if (!raw || typeof raw.name !== 'string' || !raw.name.trim()) return null;
+    var remind = Number(raw.remind) || 0;
+    if (remind !== 120 && remind !== 1440) remind = 0;
+    return { name: raw.name.trim(), email: typeof raw.email === 'string' ? raw.email.trim() : '', remind: remind };
+  } catch (e) { return null; }
+}
+function saveFirst(profile) {
+  if (loadFirst()) return;
+  try { localStorage.setItem(firstKey, JSON.stringify(profile)); } catch (e) {}
+}
+function followsHeld(slot) {
+  return data.slots.some(function (s) { return mine[s.id] && s.end === slot.start; });
+}
 function openForm(slot) {
   active = slot;
   $('#dlgWhen').textContent = dayLabel(slot.start, data.tz) + ', ' + rangeLabel(slot.start, slot.end, data.tz);
   $('#dlgErr').textContent = '';
-  try { $('#cName').value = localStorage.getItem('ss:name') || ''; $('#cEmail').value = localStorage.getItem('ss:email') || ''; } catch (e) {}
-  syncRemind();
+  var first = loadFirst();
+  if (first) {
+    $('#cName').value = first.name;
+    $('#cEmail').value = first.email;
+    syncRemind();
+    if (first.email) $('#cRemind').value = String(first.remind);
+  } else {
+    try { $('#cName').value = localStorage.getItem('ss:name') || ''; $('#cEmail').value = localStorage.getItem('ss:email') || ''; } catch (e) {}
+    syncRemind();
+  }
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
 }
 function closeForm() { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
@@ -393,23 +419,23 @@ function syncRemind() {
   $('#cRemind').disabled = !has;
   if (!has) $('#cRemind').value = '0';
 }
-$('#cEmail').addEventListener('input', syncRemind);
-$('#dlgCancel').addEventListener('click', closeForm);
-
-$('#claimForm').addEventListener('submit', function (e) {
-  e.preventDefault();
-  var go = $('#dlgGo'), err = $('#dlgErr');
-  err.textContent = '';
-  if (!$('#cName').value.trim()) { err.textContent = 'Enter your name.'; $('#cName').focus(); return; }
-  go.disabled = true;
-  var slot = active;
+function claim(slot, fields, remember) {
+  if (claiming) return;
+  claiming = true;
+  var go = $('#dlgGo');
+  var errEl = remember ? $('#dlgErr') : $('#err');
+  if (go) go.disabled = true;
+  errEl.textContent = '';
   post('/api/s/' + pid + '/claim', {
-    slotId: slot.id, name: $('#cName').value, email: $('#cEmail').value,
-    remind: Number($('#cRemind').value), website: $('#cWebsite').value
+    slotId: slot.id, name: fields.name, email: fields.email,
+    remind: fields.remind, website: remember ? $('#cWebsite').value : ''
   }).then(function (d) {
     mine[slot.id] = d.cancelToken; saveMine();
-    try { localStorage.setItem('ss:name', $('#cName').value.trim()); localStorage.setItem('ss:email', $('#cEmail').value.trim()); } catch (x) {}
-    closeForm();
+    if (remember) {
+      saveFirst({ name: fields.name, email: fields.email, remind: fields.remind });
+      try { localStorage.setItem('ss:name', fields.name); localStorage.setItem('ss:email', fields.email); } catch (x) {}
+      closeForm();
+    }
     var b = $('#banner');
     b.textContent = '';
     b.appendChild(document.createTextNode('You are signed up for ' + dayLabel(slot.start, data.tz) + ', ' + rangeLabel(slot.start, slot.end, data.tz) + '. '));
@@ -419,9 +445,33 @@ $('#claimForm').addEventListener('submit', function (e) {
     window.scrollTo(0, 0);
     return refresh();
   }).catch(function (x) {
-    err.textContent = x.message;
+    errEl.textContent = x.message;
     if (/just took/.test(x.message)) refresh();
-  }).then(function () { go.disabled = false; });
+  }).then(function () { claiming = false; if (go) go.disabled = false; });
+}
+function take(slot) {
+  if (claiming) return;
+  var first = loadFirst();
+  if (first && followsHeld(slot)) {
+    claim(slot, { name: first.name, email: '', remind: 0 }, false);
+    return;
+  }
+  openForm(slot);
+}
+$('#cEmail').addEventListener('input', syncRemind);
+$('#dlgCancel').addEventListener('click', closeForm);
+
+$('#claimForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var err = $('#dlgErr');
+  err.textContent = '';
+  if (!$('#cName').value.trim()) { err.textContent = 'Enter your name.'; $('#cName').focus(); return; }
+  if (!active) return;
+  claim(active, {
+    name: $('#cName').value.trim(),
+    email: $('#cEmail').value.trim(),
+    remind: Number($('#cRemind').value) || 0
+  }, true);
 });
 
 document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
